@@ -7,5 +7,4 @@ function Explore(props) {
         </View>
     );
 }
-
 export default Explore;
