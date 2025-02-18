@@ -1,91 +1,156 @@
-import React from "react";
-import { StyleSheet,Text,View,Touchable } from "react-native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { Dimensions } from "react-native";
-import Feather from '@expo/vector-icons/Feather';
-import Home from "../pages/tabs/Home";
-import Explore from "../pages/tabs/Explore";
-import Wishlist from "../pages/tabs/Wishlist";
-import Profile from "../pages/tabs/Profile";
+"use client"
 
-const Tab = createBottomTabNavigator();
-const { width } = Dimensions.get("window");
+import { useEffect, useRef } from "react"
+import { View, StyleSheet, Dimensions, Animated, TouchableOpacity, Easing, Platform } from "react-native"
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"
+import { BlurView } from "expo-blur"
+import { MotiView } from "moti"
+import { Feather } from "@expo/vector-icons"
 
-const MyTabs = () => {
-    return (
-        <Tab.Navigator
-            screenOptions={{
-                tabBarShowLabel: false, // Removes labels
-                tabBarStyle: {
-                    backgroundColor: "white", // Tab bar background color
-                    position: "absolute", // Makes the tab bar float
-                    bottom: 25, // Position 25 units from the bottom
-                    marginLeft: 25, // 20 units from the left
-                    marginRight: 20, // 20 units from the right
-                    elevation: 0, // Removes shadow for Android
-                    borderRadius: 15, // Makes corners rounded
-                    height: 80, // Sets height for the tab bar
-                    width:width-50,
-                    ...styles.shadow
-                },
-                headerShown: false, // Hides headers for all screens
-                gestureEnabled: false, // Disables gestures for all screens
-            }}
-        >
-            <Tab.Screen 
-                name="Home" 
-                component={Home} 
-                options={{ tabBarIcon:({focused}) =>(
-                    <View style={{alignItems:'center',justifyContent:"center",top:30}}>
-                        <Feather name="home" size={24} style={{color: focused? "black":"grey"}} />
-                        <Text>Home</Text>
-                    </View>
-                )}} 
-            />
-            <Tab.Screen 
-                name="Explore" 
-                component={Explore} 
-                options={{ tabBarIcon:({focused}) =>(
-                    <View style={{alignItems:'center',justifyContent:"center",top:30}}>
-                        <Feather name="thumbs-up" size={24} style={{color: focused? "black":"grey"}} />
-                        <Text>Recomended</Text>
-                    </View>
-                )}} 
-            />
-            <Tab.Screen 
-                name="Wishlist" 
-                component={Wishlist} 
-                options={{ tabBarIcon:({focused}) =>(
-                    <View style={{alignItems:'center',justifyContent:"center",top:30}}> 
-                        <Feather name="heart" size={24} style={{color: focused? "black":"grey"}} />
-                        <Text>Wishlist</Text>
-                    </View>
-                )}} 
-            />
-            <Tab.Screen 
-                name="Profile" 
-                component={Profile} 
-                options={{ tabBarIcon:({focused}) =>(
-                    <View style={{alignItems:'center',justifyContent:"center",top:30}}>
-                        <Feather name="book" size={24} style={{color: focused? "black":"grey"}} />
-                        <Text>Activity</Text>
-                    </View>
-                )}} 
-            />
-        </Tab.Navigator>
-    );
+// Keep your original screen components and import the new Activity component
+import Home from "../pages/tabs/Home"
+import Explore from "../pages/tabs/Explore"
+import Wishlist from "../pages/tabs/Wishlist"
+import Activity from "../pages/tabs/Activity" // New import
+
+const Tab = createBottomTabNavigator()
+const { width } = Dimensions.get("window")
+const TAB_WIDTH = width / 4
+
+const CustomTabBar = ({ state, descriptors, navigation }) => {
+  const animatedValues = useRef(state.routes.map(() => new Animated.Value(0))).current
+
+  useEffect(() => {
+    const focusedTab = state.index
+    Animated.parallel(
+      animatedValues.map((anim, index) =>
+        Animated.timing(anim, {
+          toValue: index === focusedTab ? 1 : 0,
+          duration: 300,
+          easing: Easing.bezier(0.4, 0, 0.2, 1),
+          useNativeDriver: false,
+        }),
+      ),
+    ).start()
+  }, [state.index, animatedValues])
+
+  return (
+    <BlurView intensity={80} style={styles.tabBarContainer}>
+      <View style={styles.tabBar}>
+        {state.routes.map((route, index) => {
+          const { options } = descriptors[route.key]
+          const label = options.tabBarLabel || options.title || route.name
+          const isFocused = state.index === index
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: "tabPress",
+              target: route.key,
+              canPreventDefault: true,
+            })
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name)
+            }
+          }
+
+          const animatedWidth = animatedValues[index].interpolate({
+            inputRange: [0, 1],
+            outputRange: [50, 120],
+          })
+
+          const animatedOpacity = animatedValues[index].interpolate({
+            inputRange: [0, 1],
+            outputRange: [0, 1],
+          })
+
+          return (
+            <TouchableOpacity key={index} onPress={onPress} style={styles.tabItem}>
+              <Animated.View style={[styles.tabItemContent, { width: animatedWidth }, isFocused && styles.activeTab]}>
+                <MotiView
+                  animate={{
+                    scale: isFocused ? 1 : 0.85,
+                  }}
+                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                >
+                  <Feather name={options.tabBarIcon} size={24} color={isFocused ? "#FFF" : "#8E8E93"} />
+                </MotiView>
+                <Animated.Text style={[styles.label, { opacity: animatedOpacity }]} numberOfLines={1}>
+                  {label}
+                </Animated.Text>
+              </Animated.View>
+            </TouchableOpacity>
+          )
+        })}
+      </View>
+    </BlurView>
+  )
 }
-const styles=StyleSheet.create({
-shadow:{
-    shadowColor:"grey",
-    shadowOffset:{
-        width:0,
-        height:10,
-    },
-    shadowOpacity:0.25,
-    shadowRadius:3.84,
-    elevation:5,
-}
+
+const ModernTabs = () => (
+  <Tab.Navigator
+    screenOptions={{
+      headerShown: false,
+      tabBarStyle: { position: "absolute" },
+    }}
+    tabBar={(props) => <CustomTabBar {...props} />}
+  >
+    <Tab.Screen name="Home" component={Home} options={{ tabBarIcon: "home" }} />
+    <Tab.Screen name="Explore" component={Explore} options={{ tabBarIcon: "compass" }} />
+    <Tab.Screen name="Wishlist" component={Wishlist} options={{ tabBarIcon: "heart" }} />
+    <Tab.Screen name="Activity" component={Activity} options={{ tabBarIcon: "clock" }} />
+  </Tab.Navigator>
+)
+
+const styles = StyleSheet.create({
+  tabBarContainer: {
+    position: "absolute",
+    bottom: 25,
+    left: 20,
+    right: 20,
+    borderRadius: 25,
+    overflow: "hidden",
+    height: 65,
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  tabBar: {
+    flexDirection: "row",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "space-around",
+  },
+  tabItem: {
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  tabItemContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 50,
+    borderRadius: 25,
+    paddingHorizontal: 10,
+  },
+  activeTab: {
+    backgroundColor: "black",
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#FFF",
+    marginLeft: 8,
+  },
 })
 
-export default MyTabs;
+export default ModernTabs
+

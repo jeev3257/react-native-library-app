@@ -64,10 +64,12 @@ const SignInScreen = () => {
           [
             {
               text: "OK",
+              onPress: () => navigation.replace("Login"), // Navigate to Login
             },
           ],
           { cancelable: false }
         );
+        
       } catch (error) {
         const errorMessage = error.message;
         setErrors((prevErrors) => ({ ...prevErrors, auth: errorMessage }));
