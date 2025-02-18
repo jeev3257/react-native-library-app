@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 const Activity = () => {
   return (
     <SafeAreaView>
-      <Text>Activity</Text>
+      <Text>this is activity page</Text>
     </SafeAreaView>
   )
 }
