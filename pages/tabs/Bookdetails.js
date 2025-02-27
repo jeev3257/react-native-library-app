@@ -9,9 +9,21 @@ import {
   TouchableOpacity,
   Dimensions,
   Animated,
+  FlatList,
 } from "react-native"
 import { useRoute, useNavigation } from "@react-navigation/native"
-import { getFirestore, doc, getDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore"
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  updateDoc,
+  arrayUnion,
+  arrayRemove,
+  collection,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore"
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons"
 import { BlurView } from "expo-blur"
 import bookIcon from "../../assets/bookicon.png"
@@ -32,6 +44,8 @@ const Bookdetails = () => {
   const [expanded, setExpanded] = useState(false)
   const [inWishlist, setInWishlist] = useState(false)
   const [showFlyingHearts, setShowFlyingHearts] = useState(false)
+  const [similarBooks, setSimilarBooks] = useState([])
+  const [loadingSimilar, setLoadingSimilar] = useState(false)
 
   useEffect(() => {
     const fetchBookDetails = async () => {
@@ -66,6 +80,63 @@ const Bookdetails = () => {
     fetchBookDetails()
   }, [bookId])
 
+  useEffect(() => {
+    const fetchSimilarBooks = async () => {
+      if (!book) return
+
+      setLoadingSimilar(true)
+      try {
+        // Fetch similar book ISBNs from recommendations collection
+        const recommendationsRef = doc(db, "recommendations", book.isbn)
+        const recommendationsSnap = await getDoc(recommendationsRef)
+
+        if (recommendationsSnap.exists()) {
+          const isbnList = recommendationsSnap.data()
+
+          // Ensure isbnList is an array
+          const isbnArray = Array.isArray(isbnList) ? isbnList : Object.values(isbnList)
+
+          // Fetch book details for each ISBN
+          const bookPromises = isbnArray.map(async (isbn) => {
+            // First try to get the book by ISBN
+            const booksRef = collection(db, "books")
+            const q = query(booksRef, where("isbn", "==", isbn))
+            const querySnapshot = await getDocs(q)
+
+            if (!querySnapshot.empty) {
+              return { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() }
+            }
+
+            // If not found by ISBN, try to get directly by ID
+            try {
+              const docRef = doc(db, "books", isbn)
+              const docSnap = await getDoc(docRef)
+
+              if (docSnap.exists()) {
+                return { id: docSnap.id, ...docSnap.data() }
+              }
+            } catch (error) {
+              console.log(`Error fetching book with ID ${isbn}:`, error)
+            }
+
+            return null
+          })
+
+          const bookResults = await Promise.all(bookPromises)
+          setSimilarBooks(bookResults.filter((book) => book !== null))
+        }
+      } catch (error) {
+        console.error("Error fetching similar books:", error)
+      } finally {
+        setLoadingSimilar(false)
+      }
+    }
+
+    if (book) {
+      fetchSimilarBooks()
+    }
+  }, [book])
+
   const toggleWishlist = async () => {
     const user = auth.currentUser
     if (!user) return
@@ -97,17 +168,39 @@ const Bookdetails = () => {
 
   const renderStars = (rating) => {
     const stars = []
+    const numRating = Number.parseFloat(rating)
     for (let i = 1; i <= 5; i++) {
       stars.push(
         <Ionicons
           key={i}
-          name={i <= rating ? "star" : "star-outline"}
+          name={i <= numRating ? "star" : "star-outline"}
           size={16}
-          color={i <= rating ? "#FFD700" : "#BDC3C7"}
+          color={i <= numRating ? "#FFD700" : "#BDC3C7"}
         />,
       )
     }
     return stars
+  }
+
+  const renderSimilarBookItem = ({ item }) => {
+    return (
+      <TouchableOpacity
+        style={styles.similarBookItem}
+        onPress={() => navigation.push("Bookdetails", { bookId: item.id })}
+      >
+        <Image
+          source={item.coverImg ? { uri: item.coverImg } : bookIcon}
+          style={styles.similarBookCover}
+          resizeMode="cover"
+        />
+        <Text style={styles.similarBookTitle} numberOfLines={2}>
+          {item.title}
+        </Text>
+        <Text style={styles.similarBookAuthor} numberOfLines={1}>
+          {item.author}
+        </Text>
+      </TouchableOpacity>
+    )
   }
 
   if (loading) {
@@ -328,6 +421,34 @@ const Bookdetails = () => {
             </TouchableOpacity>
           </View>
         </BlurView>
+
+        {/* Similar Books Section */}
+        <View style={styles.similarBooksSection}>
+          <Text style={styles.sectionTitle}>Similar Books</Text>
+          {loadingSimilar ? (
+            <View style={styles.loadingContainer}>
+              <Skeleton
+                width={width - 40}
+                height={200}
+                radius={8}
+                colorMode="light"
+                backgroundColor="#E1E9EE"
+                highlightColor="#F2F8FC"
+              />
+            </View>
+          ) : similarBooks.length > 0 ? (
+            <FlatList
+              data={similarBooks}
+              renderItem={renderSimilarBookItem}
+              keyExtractor={(item) => item.id}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.similarBooksContainer}
+            />
+          ) : (
+            <Text style={styles.noSimilarBooks}>No similar books found</Text>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   )
@@ -496,6 +617,56 @@ const styles = StyleSheet.create({
     color: "#333",
     fontSize: 14,
     fontWeight: "bold",
+  },
+  // Similar Books Section Styles
+  similarBooksSection: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 30,
+    backgroundColor: "#f8f8f8",
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    color: "#1a1a1a",
+    marginBottom: 16,
+    marginTop: 10,
+  },
+  similarBooksContainer: {
+    paddingRight: 20,
+  },
+  similarBookItem: {
+    width: 140,
+    marginRight: 16,
+  },
+  similarBookCover: {
+    width: 140,
+    height: 210,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: "#e0e0e0",
+  },
+  similarBookTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#1a1a1a",
+    marginBottom: 4,
+  },
+  similarBookAuthor: {
+    fontSize: 12,
+    color: "#4a4a4a",
+  },
+  loadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    height: 200,
+  },
+  noSimilarBooks: {
+    fontSize: 16,
+    color: "#4a4a4a",
+    fontStyle: "italic",
+    textAlign: "center",
+    paddingVertical: 20,
   },
 })
 

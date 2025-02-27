@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "miniapp-9052d"
-  }
+    "default": "miniapp-9052d",
+    "miniapp": "miniapp-9052d"
+  },
+  "targets": {},
+  "etags": {}
 }
